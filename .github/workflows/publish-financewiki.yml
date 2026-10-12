@@ -28,6 +28,7 @@ jobs:
       app_sha: ${{ steps.source.outputs.app_sha }}
       app_version: ${{ steps.source.outputs.app_version }}
     env:
+      APP_REPO_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -41,7 +42,7 @@ jobs:
         shell: bash
         run: |
           missing=()
-          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+          for name in APP_REPO_TOKEN TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!name}" ]; then missing+=("$name"); fi
           done
           if [ ${#missing[@]} -eq 0 ]; then
@@ -54,18 +55,22 @@ jobs:
             echo "Production publishing is blocked until these repository secrets exist: $joined"
           fi
 
-      - name: Resolve one immutable app commit and version
+      - name: Checkout private app source
+        if: steps.secrets.outputs.ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: financewiki-park/financewiki-app
+          ref: ${{ github.event.inputs.app_ref || 'main' }}
+          token: ${{ secrets.APP_REPO_TOKEN }}
+          path: app
+
+      - name: Pin one immutable app commit and version
+        if: steps.secrets.outputs.ready == 'true'
         id: source
-        env:
-          APP_REF: ${{ github.event.inputs.app_ref || 'main' }}
         shell: bash
         run: |
-          app_sha=$(git ls-remote https://github.com/financewiki-park/financewiki-app.git "$APP_REF" | awk 'NR==1 {print $1}')
-          if [ -z "$app_sha" ]; then
-            echo "Could not resolve financewiki-app ref: $APP_REF" >&2
-            exit 1
-          fi
-          version=$(curl -fsSL "https://raw.githubusercontent.com/financewiki-park/financewiki-app/$app_sha/package.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).version))')
+          app_sha=$(git -C app rev-parse HEAD)
+          version=$(node -p 'require("./app/package.json").version')
           echo "app_sha=$app_sha" >> "$GITHUB_OUTPUT"
           echo "app_version=$version" >> "$GITHUB_OUTPUT"
           echo "Pinned financewiki-app $app_sha (v$version)"
@@ -77,9 +82,9 @@ jobs:
     steps:
       - name: Report credential blocker
         run: |
-          echo "Cross-platform release pipeline is installed, but production signing is not configured."
+          echo "Cross-platform release pipeline is installed, but production signing/access is not configured."
           echo "Missing repository secrets: ${{ needs.preflight.outputs.missing }}"
-          echo "Pinned app: ${{ needs.preflight.outputs.app_sha }} (v${{ needs.preflight.outputs.app_version }})"
+          echo "No updater release was published and no signature checks were bypassed."
 
   build-windows:
     needs: preflight
@@ -92,6 +97,7 @@ jobs:
         with:
           repository: financewiki-park/financewiki-app
           ref: ${{ needs.preflight.outputs.app_sha }}
+          token: ${{ secrets.APP_REPO_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -136,6 +142,7 @@ jobs:
         with:
           repository: financewiki-park/financewiki-app
           ref: ${{ needs.preflight.outputs.app_sha }}
+          token: ${{ secrets.APP_REPO_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -199,6 +206,7 @@ jobs:
         with:
           repository: financewiki-park/financewiki-app
           ref: ${{ needs.preflight.outputs.app_sha }}
+          token: ${{ secrets.APP_REPO_TOKEN }}
           path: app
 
       - uses: actions/setup-node@v4
