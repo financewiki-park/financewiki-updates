@@ -89,7 +89,7 @@ jobs:
   build-windows:
     needs: preflight
     if: needs.preflight.outputs.ready == 'true'
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
     steps:
