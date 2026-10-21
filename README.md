@@ -7,10 +7,14 @@ Public signed application update artifacts only. This repository does not contai
 `financewiki-updates/.github/workflows/publish-financewiki.yml` is the production release boundary for FinanceWiki desktop updates.
 
 - It pins one immutable commit from private `financewiki-park/financewiki-app`.
-- Windows x64 and macOS Apple Silicon updater artifacts must be built from that same commit.
-- A release is published only after both platform builds and signature checks succeed.
-- `latest.json` must contain both `windows-x86_64` and `darwin-aarch64` entries.
+- Windows x64 updater artifacts are built from that pinned commit.
+- A release is published only after the Windows build and Tauri updater signature check succeed.
+- `latest.json` contains the `windows-x86_64` entry only.
 - Existing version releases are immutable and must not be overwritten.
-- The Tauri updater signing key and Apple signing/notarization credentials live only in Actions secrets, never in this repository.
+- The Tauri updater signing key lives only in Actions secrets, never in this repository.
+
+## macOS status
+
+macOS distribution is intentionally deferred. No macOS artifact, signature, notarization, or `darwin-aarch64` manifest entry is published until a separately approved cross-platform release restores Apple signing and notarization validation.
 
 The application-side release contract is documented in `financewiki-app/docs/CROSS_PLATFORM_RELEASE.md`.

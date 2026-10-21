@@ -1,4 +1,4 @@
-name: Publish FinanceWiki updater
+name: Publish FinanceWiki Windows updater
 
 on:
   workflow_dispatch:
@@ -30,19 +30,13 @@ jobs:
     env:
       APP_REPO_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Check release credentials without exposing values
         id: secrets
         shell: bash
         run: |
           missing=()
-          for name in APP_REPO_TOKEN TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+          for name in APP_REPO_TOKEN TAURI_SIGNING_PRIVATE_KEY; do
             if [ -z "${!name}" ]; then missing+=("$name"); fi
           done
           if [ ${#missing[@]} -eq 0 ]; then
@@ -82,7 +76,7 @@ jobs:
     steps:
       - name: Report credential blocker
         run: |
-          echo "Cross-platform release pipeline is installed, but production signing/access is not configured."
+          echo "Windows updater release is blocked until signing/access is configured."
           echo "Missing repository secrets: ${{ needs.preflight.outputs.missing }}"
           echo "No updater release was published and no signature checks were bypassed."
 
@@ -128,77 +122,8 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  build-macos:
-    needs: preflight
-    if: needs.preflight.outputs.ready == 'true'
-    runs-on: macos-15
-    env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: financewiki-park/financewiki-app
-          ref: ${{ needs.preflight.outputs.app_sha }}
-          token: ${{ secrets.APP_REPO_TOKEN }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Import Developer ID certificate
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        shell: bash
-        run: |
-          python3 -c 'import base64,os; open("certificate.p12","wb").write(base64.b64decode(os.environ["APPLE_CERTIFICATE"]))'
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security set-keychain-settings -t 3600 -u build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          identity=$(security find-identity -v -p codesigning build.keychain | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -n 1)
-          if [ -z "$identity" ]; then
-            echo "Developer ID Application identity not found" >&2
-            exit 1
-          fi
-          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
-
-      - run: npm ci
-      - run: npm test
-      - run: npm run release:updater-check
-      - run: npm run tauri -- build
-
-      - name: Stage notarized Apple Silicon updater
-        shell: bash
-        run: |
-          version="${{ needs.preflight.outputs.app_version }}"
-          source="src-tauri/target/release/bundle/macos/FinanceWiki.app.tar.gz"
-          test -f "$source"
-          test -f "$source.sig"
-          mkdir -p staging
-          cp "$source" "staging/FinanceWiki_${version}_aarch64.app.tar.gz"
-          cp "$source.sig" "staging/FinanceWiki_${version}_aarch64.app.tar.gz.sig"
-          codesign --verify --deep --strict "src-tauri/target/release/bundle/macos/FinanceWiki.app"
-          xcrun stapler validate "src-tauri/target/release/bundle/macos/FinanceWiki.app"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: updater-darwin-aarch64
-          path: staging/*
-          if-no-files-found: error
-          retention-days: 3
-
   publish:
-    needs: [preflight, build-windows, build-macos]
+    needs: [preflight, build-windows]
     if: needs.preflight.outputs.ready == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -219,25 +144,17 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Build one manifest containing Windows and macOS
+      - name: Build Windows updater manifest
         shell: bash
         run: |
           version="${{ needs.preflight.outputs.app_version }}"
           windows="dist/FinanceWiki_${version}_x64-setup.exe"
-          mac="dist/FinanceWiki_${version}_aarch64.app.tar.gz"
           node app/scripts/create-update-manifest.mjs \
             --platform windows-x86_64 \
             --artifact "$windows" \
             --signature "$windows.sig" \
             --output dist/latest.json
-          node app/scripts/create-update-manifest.mjs \
-            --platform darwin-aarch64 \
-            --artifact "$mac" \
-            --signature "$mac.sig" \
-            --asset-name "FinanceWiki_${version}_aarch64.app.tar.gz" \
-            --base dist/latest.json \
-            --output dist/latest.json
-          node -e 'const m=require("./dist/latest.json"); const p=Object.keys(m.platforms); if(!p.includes("windows-x86_64")||!p.includes("darwin-aarch64")) process.exit(1); console.log(m.version,p.join(","))'
+          node -e 'const m=require("./dist/latest.json"); const p=Object.keys(m.platforms); if(!p.includes("windows-x86_64")||p.length!==1) process.exit(1); console.log(m.version,p.join(","))'
           sha256sum dist/FinanceWiki_* dist/latest.json > dist/artifact-sha256.txt
 
       - name: Publish immutable updater release
@@ -254,14 +171,14 @@ jobs:
           gh release create "$tag" \
             --repo financewiki-park/financewiki-updates \
             --title "FinanceWiki $tag" \
-            --notes "financewiki-app ${{ needs.preflight.outputs.app_sha }}. Windows x64 and macOS Apple Silicon updater artifacts built from the same immutable source commit." \
+            --notes "financewiki-app ${{ needs.preflight.outputs.app_sha }}. Windows x64 updater artifact built from this immutable source commit. macOS distribution is intentionally deferred." \
             dist/FinanceWiki_* \
             dist/latest.json \
             dist/artifact-sha256.txt
 
-      - name: Verify latest endpoint exposes both platforms
+      - name: Verify latest endpoint exposes Windows updater
         shell: bash
         run: |
           sleep 5
           curl -fsSL "https://github.com/financewiki-park/financewiki-updates/releases/latest/download/latest.json" -o published-latest.json
-          node -e 'const m=require("./published-latest.json"); const p=Object.keys(m.platforms); if(m.version!=="${{ needs.preflight.outputs.app_version }}"||!p.includes("windows-x86_64")||!p.includes("darwin-aarch64")) process.exit(1); console.log("Published updater manifest verified:",m.version,p.join(","))'
+          node -e 'const m=require("./published-latest.json"); const p=Object.keys(m.platforms); if(m.version!=="${{ needs.preflight.outputs.app_version }}"||!p.includes("windows-x86_64")||p.length!==1) process.exit(1); console.log("Published updater manifest verified:",m.version,p.join(","))'
