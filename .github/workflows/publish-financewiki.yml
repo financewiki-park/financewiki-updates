@@ -7,10 +7,6 @@ on:
         description: financewiki-app ref to release
         required: true
         default: main
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/publish-financewiki.yml"
 
 permissions:
   contents: write
@@ -76,9 +72,10 @@ jobs:
     steps:
       - name: Report credential blocker
         run: |
-          echo "Windows updater release is blocked until signing/access is configured."
+          echo "Windows updater release is blocked until signing/access is configured." >&2
           echo "Missing repository secrets: ${{ needs.preflight.outputs.missing }}"
-          echo "No updater release was published and no signature checks were bypassed."
+          echo "No updater release was published and no signature checks were bypassed." >&2
+          exit 1
 
   build-windows:
     needs: preflight

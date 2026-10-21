@@ -12,9 +12,11 @@ Public signed application update artifacts only. This repository does not contai
 - `latest.json` contains the `windows-x86_64` entry only.
 - Existing version releases are immutable and must not be overwritten.
 - The Tauri updater signing key lives only in Actions secrets, never in this repository.
+- Production publishing is started only with `workflow_dispatch` and an immutable, full 40-character `financewiki-app` SHA. Updating this workflow must never publish a duplicate app version by itself.
 
 ## macOS status
 
 macOS distribution is intentionally deferred. No macOS artifact, signature, notarization, or `darwin-aarch64` manifest entry is published until a separately approved cross-platform release restores Apple signing and notarization validation.
 
 The application-side release contract is documented in `financewiki-app/docs/CROSS_PLATFORM_RELEASE.md`.
+The operational procedure and v0.2.71 incident record are in `financewiki-app/docs/WINDOWS_UPDATER_RELEASE_RUNBOOK.md`.
