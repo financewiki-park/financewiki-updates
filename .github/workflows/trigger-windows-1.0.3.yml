@@ -1,0 +1,24 @@
+name: Trigger FinanceWiki Windows 1.0.3 updater
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/trigger-windows-1.0.3.yml"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    if: contains(github.event.head_commit.message, 'trigger Windows 1.0.3 updater')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch production updater workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run publish-financewiki.yml \
+            --repo financewiki-park/financewiki-updates \
+            -f app_ref=7d464ba3aa9321fa83a64f74d4bba8346e7083fd
