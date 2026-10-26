@@ -169,6 +169,7 @@ jobs:
             --repo financewiki-park/financewiki-updates \
             --title "FinanceWiki $tag" \
             --notes "financewiki-app ${{ needs.preflight.outputs.app_sha }}. Windows x64 updater artifact built from this immutable source commit. macOS distribution is intentionally deferred." \
+            --latest \
             dist/FinanceWiki_* \
             dist/latest.json \
             dist/artifact-sha256.txt
